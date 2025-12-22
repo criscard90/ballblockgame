@@ -11,7 +11,7 @@
             background: #050505;
             color: #fff;
             overflow: hidden;
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -23,6 +23,7 @@
             background: #000;
             max-width: 100%;
             max-height: 100%;
+            cursor: none;
         }
         #ui {
             position: absolute;
@@ -30,65 +31,103 @@
             left: 10px;
             pointer-events: none;
             text-shadow: 0 0 5px #0ff;
+            font-weight: bold;
+            z-index: 5;
+        }
+        #gameOverScreen {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0,0,0,0.9);
+            padding: 30px;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 30px #0ff;
+            z-index: 10;
+        }
+        button {
+            background: #0ff;
+            border: none;
+            padding: 10px 25px;
+            font-weight: bold;
+            color: #000;
+            cursor: pointer;
+            margin-top: 15px;
+            letter-spacing: 1px;
         }
     </style>
 </head>
 <body>
+
+    <div id="ui">LIVELLO: <span id="level">1</span> | PUNTI: <span id="score">0</span></div>
     
-    <div id="ui">Livello: <span id="level">1</span> | Punti: <span id="score">0</span></div>
-    <div id="gameOverScreen" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0,0,0,0.9); padding: 20px; border: 2px solid #0ff; box-shadow: 0 0 20px #0ff; z-index: 10;">
+    <div id="gameOverScreen">
         <h1 style="color: #0ff; margin: 0;">GAME OVER</h1>
-        <p style="font-size: 1.2rem;">Punteggio: <span id="finalScore">0</span></p>
-        <button onclick="location.reload()" style="background: #0ff; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer;">RIPROVA</button>
+        <p style="font-size: 1.2rem;">Punteggio Finale: <span id="finalScore">0</span></p>
+        <button onclick="location.reload()">RIPROVA</button>
     </div>
+
     <canvas id="gameCanvas"></canvas>
-    
+
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const scoreEl = document.getElementById('score');
         const levelEl = document.getElementById('level');
-        
-        // Configurazione responsive
+
         canvas.width = window.innerWidth < 500 ? window.innerWidth - 20 : 480;
         canvas.height = window.innerHeight < 800 ? window.innerHeight - 100 : 640;
-        
+
         let score = 0;
         let currentLevel = 1;
         let gameRunning = true;
-        
-        // --- OGGETTI DI GIOCO ---
-        const paddle = {
-            w: 80,
-            h: 12,
-            x: canvas.width / 2 - 40,
-            y: canvas.height - 30,
-            color: '#0ff'
-        };
-        
-        const ball = {
-            radius: 8,
-            x: canvas.width / 2,
-            y: paddle.y - 10,
-            dx: 4,
-            dy: -4,
-            speed: 4,
-            color: '#fff'
-        };
-        
+
+        // --- STATO DEL GIOCO ---
+        const paddle = { w: 90, h: 12, x: canvas.width / 2 - 45, y: canvas.height - 30, color: '#0ff' };
+        let balls = [];
         let bricks = [];
-        const brickConfig = { rows: 5, cols: 6, h: 25, padding: 10, offsetTop: 50 };
-        
-        // --- LOGICA LIVELLI CASUALI ---
+        let powerUps = [];
+        let particles = [];
+        const brickConfig = { rows: 4, cols: 6, h: 25, padding: 8, offsetTop: 60 };
+
+        // --- FUNZIONI DI SUPPORTO ---
+        function createBall(x, y, isExtra = false) {
+            const angle = isExtra ? (Math.random() * Math.PI) - Math.PI : -Math.PI/4;
+            const speed = 4 + (currentLevel * 0.2);
+            return {
+                radius: 7,
+                x: x,
+                y: y,
+                dx: isExtra ? Math.cos(angle) * speed : speed,
+                dy: isExtra ? Math.sin(angle) * speed : -speed,
+                speed: speed,
+                color: '#fff'
+            };
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x: x, y: y,
+                    dx: (Math.random() - 0.5) * 6,
+                    dy: (Math.random() - 0.5) * 6,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
         function generateLevel() {
             bricks = [];
             const colors = ['#f0f', '#0ff', '#0f0', '#ff0', '#f00'];
-            for (let r = 0; r < brickConfig.rows + currentLevel; r++) {
+            let rows = Math.min(brickConfig.rows + Math.floor(currentLevel/2), 8);
+            for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < brickConfig.cols; c++) {
-                    // Probabilità di spawn aumenta con i livelli
-                    if (Math.random() > 0.2) {
+                    if (Math.random() > 0.1) {
                         bricks.push({
-                            x: c * (canvas.width / brickConfig.cols),
+                            x: c * (canvas.width / brickConfig.cols) + brickConfig.padding/2,
                             y: r * (brickConfig.h + brickConfig.padding) + brickConfig.offsetTop,
                             w: (canvas.width / brickConfig.cols) - brickConfig.padding,
                             h: brickConfig.h,
@@ -99,114 +138,176 @@
                 }
             }
         }
-        
-        // --- CONTROLLI TOUCH ---
-        canvas.addEventListener('touchmove', (e) => {
-            const touch = e.touches[0];
+
+        // --- INPUT ---
+        function movePaddle(clientX) {
             const rect = canvas.getBoundingClientRect();
-            paddle.x = touch.clientX - rect.left - paddle.w / 2;
-            // Limiti laterali
+            paddle.x = clientX - rect.left - paddle.w / 2;
             if (paddle.x < 0) paddle.x = 0;
             if (paddle.x > canvas.width - paddle.w) paddle.x = canvas.width - paddle.w;
+        }
+
+        canvas.addEventListener('touchmove', (e) => {
+            movePaddle(e.touches[0].clientX);
             e.preventDefault();
         }, { passive: false });
-        
-        // --- MOTORE DI GIOCO ---
+
+        canvas.addEventListener('mousemove', (e) => movePaddle(e.clientX));
+
+        // --- LOGICA ---
         function update() {
             if (!gameRunning) return;
-            
-            // Movimento palla
-            ball.x += ball.dx;
-            ball.y += ball.dy;
-            
-            // Collisioni pareti
-            if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) ball.dx *= -1;
-            if (ball.y - ball.radius < 0) ball.dy *= -1;
-            
-            // Collisione Paddle
-            if (ball.y + ball.radius > paddle.y && 
-            ball.x > paddle.x && ball.x < paddle.x + paddle.w) {
-                ball.dy = -ball.speed;
-                // Angolazione basata su dove tocca la barra
-                let hitPoint = (ball.x - (paddle.x + paddle.w/2)) / (paddle.w/2);
-                ball.dx = hitPoint * ball.speed;
-            }
-            
-            if (ball.y + ball.radius > canvas.height) {
-                gameRunning = false; // Blocca il movimento
-                const screen = document.getElementById('gameOverScreen');
-                const finalScoreEl = document.getElementById('finalScore');
-                
-                finalScoreEl.innerText = score;
-                screen.style.display = 'block'; // Mostra l'interfaccia di Game Over
-                return;
-            }
-            
-            // Collisione Mattoni
-            bricks.forEach(b => {
-                if (b.status === 1) {
-                    if (ball.x > b.x && ball.x < b.x + b.w && ball.y > b.y && ball.y < b.y + b.h) {
-                        ball.dy *= -1;
-                        b.status = 0;
-                        score += 10;
-                        scoreEl.innerText = score;
-                    }
+
+            // 1. Gestione Palline
+            for (let i = balls.length - 1; i >= 0; i--) {
+                let b = balls[i];
+                b.x += b.dx;
+                b.y += b.dy;
+
+                // Collisioni pareti
+                if (b.x + b.radius > canvas.width || b.x - b.radius < 0) b.dx *= -1;
+                if (b.y - b.radius < 0) b.dy *= -1;
+
+                // Collisione Paddle
+                if (b.y + b.radius > paddle.y && b.y < paddle.y + paddle.h &&
+                    b.x > paddle.x && b.x < paddle.x + paddle.w) {
+                    b.dy = -b.speed;
+                    let hitPoint = (b.x - (paddle.x + paddle.w/2)) / (paddle.w/2);
+                    b.dx = hitPoint * b.speed;
                 }
+
+                // Collisione Mattoni
+                bricks.forEach(brick => {
+                    if (brick.status === 1) {
+                        if (b.x > brick.x && b.x < brick.x + brick.w && b.y > brick.y && b.y < brick.y + brick.h) {
+                            b.dy *= -1;
+                            brick.status = 0;
+                            score += 10;
+                            scoreEl.innerText = score;
+                            createParticles(brick.x + brick.w/2, brick.y + brick.h/2, brick.color);
+                            
+                            // Probabilità Multiball Powerup
+                            if (Math.random() < 0.15) {
+                                powerUps.push({ x: brick.x + brick.w/2, y: brick.y, w: 15, h: 15, color: '#f0f' });
+                            }
+                        }
+                    }
+                });
+
+                // Rimuovi palla caduta
+                if (b.y - b.radius > canvas.height) {
+                    balls.splice(i, 1);
+                }
+            }
+
+            // Game Over Check
+            if (balls.length === 0) {
+                gameRunning = false;
+                document.getElementById('gameOverScreen').style.display = 'block';
+                document.getElementById('finalScore').innerText = score;
+            }
+
+            // 2. Gestione Power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                let p = powerUps[i];
+                p.y += 3;
+                if (p.y > paddle.y && p.y < paddle.y + paddle.h && p.x > paddle.x && p.x < paddle.x + paddle.w) {
+                    // Attiva Multiball: aggiunge 2 palline
+                    balls.push(createBall(paddle.x + paddle.w/2, paddle.y - 10, true));
+                    balls.push(createBall(paddle.x + paddle.w/2, paddle.y - 10, true));
+                    powerUps.splice(i, 1);
+                } else if (p.y > canvas.height) {
+                    powerUps.splice(i, 1);
+                }
+            }
+
+            // 3. Particelle
+            particles.forEach((p, i) => {
+                p.x += p.dx; p.y += p.dy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
             });
-            
-            // Vittoria livello
-            if (bricks.filter(b => b.status === 1).length === 0) {
+
+            // Livello Superato
+            if (bricks.length > 0 && bricks.filter(b => b.status === 1).length === 0) {
                 currentLevel++;
                 levelEl.innerText = currentLevel;
-                ball.speed += 0.5;
                 generateLevel();
-                ball.x = canvas.width / 2;
-                ball.y = paddle.y - 10;
-                ball.dy = -ball.speed;
+                balls = [createBall(canvas.width / 2, paddle.y - 10)];
             }
         }
-        
+
+        // --- DISEGNO ---
         function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Disegna Mattoni con effetto Glow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; // Effetto scia
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Mattoni
             bricks.forEach(b => {
                 if (b.status === 1) {
-                    ctx.shadowBlur = 10;
+                    ctx.shadowBlur = 8;
                     ctx.shadowColor = b.color;
                     ctx.fillStyle = b.color;
                     ctx.fillRect(b.x, b.y, b.w, b.h);
                 }
             });
-            
-            // Disegna Paddle
+
+            // Paddle
             ctx.shadowBlur = 15;
             ctx.shadowColor = paddle.color;
             ctx.fillStyle = paddle.color;
             ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
-            
-            // Disegna Palla
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = "#fff";
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fillStyle = ball.color;
-            ctx.fill();
-            ctx.closePath();
-            
-            ctx.shadowBlur = 0; // Reset per performance
+
+            // Palline
+            balls.forEach(b => {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#fff';
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Powerups (Icona Multiball)
+            powerUps.forEach(p => {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = p.color;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 8, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = "#fff";
+                ctx.fillText("+", p.x-4, p.y+4);
+            });
+
+            // Particelle
+            particles.forEach(p => {
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = `rgba(${hexToRgb(p.color)}, ${p.life})`;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+
+            ctx.shadowBlur = 0;
         }
-        
+
+        function hexToRgb(hex) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `${r}, ${g}, ${b}`;
+        }
+
         function loop() {
             update();
             draw();
             requestAnimationFrame(loop);
         }
-        
+
+        // Avvio
+        balls.push(createBall(canvas.width / 2, paddle.y - 10));
         generateLevel();
         loop();
-        
-        // Registrazione Service Worker per PWA
+
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
         }
