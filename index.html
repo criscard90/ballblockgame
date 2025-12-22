@@ -34,24 +34,29 @@
     </style>
 </head>
 <body>
-
+    
     <div id="ui">Livello: <span id="level">1</span> | Punti: <span id="score">0</span></div>
+    <div id="gameOverScreen" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0,0,0,0.9); padding: 20px; border: 2px solid #0ff; box-shadow: 0 0 20px #0ff; z-index: 10;">
+        <h1 style="color: #0ff; margin: 0;">GAME OVER</h1>
+        <p style="font-size: 1.2rem;">Punteggio: <span id="finalScore">0</span></p>
+        <button onclick="location.reload()" style="background: #0ff; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer;">RIPROVA</button>
+    </div>
     <canvas id="gameCanvas"></canvas>
-
+    
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const scoreEl = document.getElementById('score');
         const levelEl = document.getElementById('level');
-
+        
         // Configurazione responsive
         canvas.width = window.innerWidth < 500 ? window.innerWidth - 20 : 480;
         canvas.height = window.innerHeight < 800 ? window.innerHeight - 100 : 640;
-
+        
         let score = 0;
         let currentLevel = 1;
         let gameRunning = true;
-
+        
         // --- OGGETTI DI GIOCO ---
         const paddle = {
             w: 80,
@@ -60,7 +65,7 @@
             y: canvas.height - 30,
             color: '#0ff'
         };
-
+        
         const ball = {
             radius: 8,
             x: canvas.width / 2,
@@ -70,10 +75,10 @@
             speed: 4,
             color: '#fff'
         };
-
+        
         let bricks = [];
         const brickConfig = { rows: 5, cols: 6, h: 25, padding: 10, offsetTop: 50 };
-
+        
         // --- LOGICA LIVELLI CASUALI ---
         function generateLevel() {
             bricks = [];
@@ -94,7 +99,7 @@
                 }
             }
         }
-
+        
         // --- CONTROLLI TOUCH ---
         canvas.addEventListener('touchmove', (e) => {
             const touch = e.touches[0];
@@ -105,34 +110,38 @@
             if (paddle.x > canvas.width - paddle.w) paddle.x = canvas.width - paddle.w;
             e.preventDefault();
         }, { passive: false });
-
+        
         // --- MOTORE DI GIOCO ---
         function update() {
             if (!gameRunning) return;
-
+            
             // Movimento palla
             ball.x += ball.dx;
             ball.y += ball.dy;
-
+            
             // Collisioni pareti
             if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) ball.dx *= -1;
             if (ball.y - ball.radius < 0) ball.dy *= -1;
-
+            
             // Collisione Paddle
             if (ball.y + ball.radius > paddle.y && 
-                ball.x > paddle.x && ball.x < paddle.x + paddle.w) {
+            ball.x > paddle.x && ball.x < paddle.x + paddle.w) {
                 ball.dy = -ball.speed;
                 // Angolazione basata su dove tocca la barra
                 let hitPoint = (ball.x - (paddle.x + paddle.w/2)) / (paddle.w/2);
                 ball.dx = hitPoint * ball.speed;
             }
-
-            // Game Over
+            
             if (ball.y + ball.radius > canvas.height) {
-                alert("Game Over! Punti: " + score);
-                document.location.reload();
+                gameRunning = false; // Blocca il movimento
+                const screen = document.getElementById('gameOverScreen');
+                const finalScoreEl = document.getElementById('finalScore');
+                
+                finalScoreEl.innerText = score;
+                screen.style.display = 'block'; // Mostra l'interfaccia di Game Over
+                return;
             }
-
+            
             // Collisione Mattoni
             bricks.forEach(b => {
                 if (b.status === 1) {
@@ -144,7 +153,7 @@
                     }
                 }
             });
-
+            
             // Vittoria livello
             if (bricks.filter(b => b.status === 1).length === 0) {
                 currentLevel++;
@@ -156,10 +165,10 @@
                 ball.dy = -ball.speed;
             }
         }
-
+        
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+            
             // Disegna Mattoni con effetto Glow
             bricks.forEach(b => {
                 if (b.status === 1) {
@@ -169,13 +178,13 @@
                     ctx.fillRect(b.x, b.y, b.w, b.h);
                 }
             });
-
+            
             // Disegna Paddle
             ctx.shadowBlur = 15;
             ctx.shadowColor = paddle.color;
             ctx.fillStyle = paddle.color;
             ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
-
+            
             // Disegna Palla
             ctx.shadowBlur = 10;
             ctx.shadowColor = "#fff";
@@ -184,19 +193,19 @@
             ctx.fillStyle = ball.color;
             ctx.fill();
             ctx.closePath();
-
+            
             ctx.shadowBlur = 0; // Reset per performance
         }
-
+        
         function loop() {
             update();
             draw();
             requestAnimationFrame(loop);
         }
-
+        
         generateLevel();
         loop();
-
+        
         // Registrazione Service Worker per PWA
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
