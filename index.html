@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Arkanoid PWA</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body {
+            margin: 0;
+            background: #050505;
+            color: #fff;
+            overflow: hidden;
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px #0ff;
+            background: #000;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            text-shadow: 0 0 5px #0ff;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">Livello: <span id="level">1</span> | Punti: <span id="score">0</span></div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const levelEl = document.getElementById('level');
+
+        // Configurazione responsive
+        canvas.width = window.innerWidth < 500 ? window.innerWidth - 20 : 480;
+        canvas.height = window.innerHeight < 800 ? window.innerHeight - 100 : 640;
+
+        let score = 0;
+        let currentLevel = 1;
+        let gameRunning = true;
+
+        // --- OGGETTI DI GIOCO ---
+        const paddle = {
+            w: 80,
+            h: 12,
+            x: canvas.width / 2 - 40,
+            y: canvas.height - 30,
+            color: '#0ff'
+        };
+
+        const ball = {
+            radius: 8,
+            x: canvas.width / 2,
+            y: paddle.y - 10,
+            dx: 4,
+            dy: -4,
+            speed: 4,
+            color: '#fff'
+        };
+
+        let bricks = [];
+        const brickConfig = { rows: 5, cols: 6, h: 25, padding: 10, offsetTop: 50 };
+
+        // --- LOGICA LIVELLI CASUALI ---
+        function generateLevel() {
+            bricks = [];
+            const colors = ['#f0f', '#0ff', '#0f0', '#ff0', '#f00'];
+            for (let r = 0; r < brickConfig.rows + currentLevel; r++) {
+                for (let c = 0; c < brickConfig.cols; c++) {
+                    // Probabilità di spawn aumenta con i livelli
+                    if (Math.random() > 0.2) {
+                        bricks.push({
+                            x: c * (canvas.width / brickConfig.cols),
+                            y: r * (brickConfig.h + brickConfig.padding) + brickConfig.offsetTop,
+                            w: (canvas.width / brickConfig.cols) - brickConfig.padding,
+                            h: brickConfig.h,
+                            color: colors[r % colors.length],
+                            status: 1
+                        });
+                    }
+                }
+            }
+        }
+
+        // --- CONTROLLI TOUCH ---
+        canvas.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            paddle.x = touch.clientX - rect.left - paddle.w / 2;
+            // Limiti laterali
+            if (paddle.x < 0) paddle.x = 0;
+            if (paddle.x > canvas.width - paddle.w) paddle.x = canvas.width - paddle.w;
+            e.preventDefault();
+        }, { passive: false });
+
+        // --- MOTORE DI GIOCO ---
+        function update() {
+            if (!gameRunning) return;
+
+            // Movimento palla
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // Collisioni pareti
+            if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) ball.dx *= -1;
+            if (ball.y - ball.radius < 0) ball.dy *= -1;
+
+            // Collisione Paddle
+            if (ball.y + ball.radius > paddle.y && 
+                ball.x > paddle.x && ball.x < paddle.x + paddle.w) {
+                ball.dy = -ball.speed;
+                // Angolazione basata su dove tocca la barra
+                let hitPoint = (ball.x - (paddle.x + paddle.w/2)) / (paddle.w/2);
+                ball.dx = hitPoint * ball.speed;
+            }
+
+            // Game Over
+            if (ball.y + ball.radius > canvas.height) {
+                alert("Game Over! Punti: " + score);
+                document.location.reload();
+            }
+
+            // Collisione Mattoni
+            bricks.forEach(b => {
+                if (b.status === 1) {
+                    if (ball.x > b.x && ball.x < b.x + b.w && ball.y > b.y && ball.y < b.y + b.h) {
+                        ball.dy *= -1;
+                        b.status = 0;
+                        score += 10;
+                        scoreEl.innerText = score;
+                    }
+                }
+            });
+
+            // Vittoria livello
+            if (bricks.filter(b => b.status === 1).length === 0) {
+                currentLevel++;
+                levelEl.innerText = currentLevel;
+                ball.speed += 0.5;
+                generateLevel();
+                ball.x = canvas.width / 2;
+                ball.y = paddle.y - 10;
+                ball.dy = -ball.speed;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Disegna Mattoni con effetto Glow
+            bricks.forEach(b => {
+                if (b.status === 1) {
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = b.color;
+                    ctx.fillStyle = b.color;
+                    ctx.fillRect(b.x, b.y, b.w, b.h);
+                }
+            });
+
+            // Disegna Paddle
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = paddle.color;
+            ctx.fillStyle = paddle.color;
+            ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+
+            // Disegna Palla
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "#fff";
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+            ctx.closePath();
+
+            ctx.shadowBlur = 0; // Reset per performance
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        generateLevel();
+        loop();
+
+        // Registrazione Service Worker per PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
