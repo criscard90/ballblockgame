@@ -41,9 +41,9 @@
         canvas.width = window.innerWidth < 500 ? window.innerWidth - 20 : 480;
         canvas.height = window.innerHeight < 800 ? window.innerHeight - 100 : 640;
 
-        let score = 0, lives = 3, currentLevel = 1, combo = 1, gameRunning = true, shakeTime = 0;
+        let score = 0, lives = 3, currentLevel = 1, combo = 1, gameRunning = true, shakeTime = 0, laserTimer = 0, bombActive = false;
         const paddle = { w: 90, h: 12, x: canvas.width / 2 - 45, y: canvas.height - 30, color: '#0ff' };
-        let balls = [], bricks = [], powerUps = [], particles = [], floatingTexts = [];
+        let balls = [], bricks = [], powerUps = [], particles = [], floatingTexts = [], lasers = [];
         let stars = Array.from({length: 40}, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: Math.random() * 2, speed: Math.random() * 0.5 + 0.1 }));
 
         const brickConfig = { rows: 4, cols: 6, h: 25, padding: 8, offsetTop: 60 };
@@ -113,9 +113,21 @@
                                 score += pts; spawnText(brick.x, brick.y, "+" + pts, brick.origColor);
                                 combo++; scoreEl.innerText = score; comboEl.innerText = "x" + combo;
                                 createParticles(brick.x + brick.w/2, brick.y + brick.h/2, brick.origColor);
+                                if (bombActive) {
+                                    const bx = brick.x + brick.w/2, by = brick.y + brick.h/2;
+                                    bricks.forEach(b => {
+                                        if (b.status === 1 && b.type !== 'steel' && Math.hypot(b.x + b.w/2 - bx, b.y + b.h/2 - by) < 60) {
+                                            b.hits = 0; b.status = 0;
+                                            score += (b.type === 'heavy' ? 30 : 10) * combo;
+                                            spawnText(b.x, b.y, "+" + ((b.type === 'heavy' ? 30 : 10) * combo), b.origColor);
+                                            createParticles(b.x + b.w/2, b.y + b.h/2, b.origColor);
+                                        }
+                                    });
+                                    bombActive = false;
+                                }
                                 if (Math.random() < 0.15) {
-                                    const types = ['multi', 'fire', 'enlarge', 'slow', 'life'];
-                                    const colors = ['#f0f', '#ff4500', '#0f0', '#00f', '#ff0'];
+                                    const types = ['multi', 'fire', 'enlarge', 'slow', 'life', 'laser', 'bomb'];
+                                    const colors = ['#f0f', '#ff4500', '#0f0', '#00f', '#ff0', '#ff0', '#800'];
                                     const idx = Math.floor(Math.random() * types.length);
                                     powerUps.push({ x: brick.x + brick.w/2, y: brick.y, type: types[idx], color: colors[idx] });
                                 }
@@ -133,6 +145,27 @@
                 else { gameRunning = false; document.getElementById('gameOverScreen').style.display = 'block'; document.getElementById('finalScore').innerText = score; }
             }
 
+            if (laserTimer > 0) {
+                laserTimer--;
+                if (laserTimer % 30 === 0) lasers.push({x: paddle.x + paddle.w/2, y: paddle.y, dy: -10});
+            }
+            lasers.forEach((l, i) => {
+                l.y += l.dy;
+                bricks.forEach(brick => {
+                    if (brick.status === 1 && l.x > brick.x && l.x < brick.x + brick.w && l.y > brick.y && l.y < brick.y + brick.h) {
+                        if (brick.type !== 'steel') {
+                            brick.hits = 0;
+                            brick.status = 0; let pts = (brick.type === 'heavy' ? 30 : 10) * combo;
+                            score += pts; spawnText(brick.x, brick.y, "+" + pts, brick.origColor);
+                            combo++; scoreEl.innerText = score; comboEl.innerText = "x" + combo;
+                            createParticles(brick.x + brick.w/2, brick.y + brick.h/2, brick.origColor);
+                        }
+                        lasers.splice(i, 1);
+                    }
+                });
+                if (l.y < 0) lasers.splice(i, 1);
+            });
+
             for (let i = powerUps.length - 1; i >= 0; i--) {
                 let p = powerUps[i]; p.y += 3;
                 if (p.y > paddle.y && p.y < paddle.y + paddle.h && p.x > paddle.x && p.x < paddle.x + paddle.w) {
@@ -141,6 +174,8 @@
                     else if (p.type === 'enlarge') { paddle.w += 30; setTimeout(() => paddle.w = Math.max(90, paddle.w - 30), 8000); }
                     else if (p.type === 'slow') { balls.forEach(b => b.speed *= 0.7); setTimeout(() => balls.forEach(b => b.speed /= 0.7), 6000); }
                     else if (p.type === 'life') { lives++; livesEl.innerText = lives; }
+                    else if (p.type === 'laser') { laserTimer = 600; }
+                    else if (p.type === 'bomb') { bombActive = true; }
                     powerUps.splice(i, 1);
                 } else if (p.y > canvas.height) powerUps.splice(i, 1);
             }
@@ -184,6 +219,11 @@
             ctx.shadowBlur = 15; ctx.shadowColor = '#0ff'; ctx.fillStyle = '#0ff';
             ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
 
+            lasers.forEach(l => {
+                ctx.shadowBlur = 10; ctx.shadowColor = '#ff0'; ctx.fillStyle = '#ff0';
+                ctx.fillRect(l.x - 1, l.y, 2, 10);
+            });
+
             powerUps.forEach(p => {
                 ctx.shadowBlur = 15; ctx.shadowColor = p.color; ctx.fillStyle = p.color;
                 ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI*2); ctx.fill();
@@ -194,6 +234,8 @@
                 else if (p.type === 'enlarge') icon = 'E';
                 else if (p.type === 'slow') icon = 'S';
                 else if (p.type === 'life') icon = 'L';
+                else if (p.type === 'laser') icon = 'Z';
+                else if (p.type === 'bomb') icon = 'B';
                 ctx.fillText(icon, p.x, p.y + 5);
             });
 
