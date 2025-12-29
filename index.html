@@ -41,8 +41,8 @@
         canvas.width = window.innerWidth < 500 ? window.innerWidth - 20 : 480;
         canvas.height = window.innerHeight < 800 ? window.innerHeight - 100 : 640;
 
-        let score = 0, lives = 3, currentLevel = 1, combo = 1, gameRunning = true, shakeTime = 0, laserTimer = 0, bombActive = false;
-        const paddle = { w: 90, h: 12, x: canvas.width / 2 - 45, y: canvas.height - 30, color: '#0ff' };
+        let score = 0, lives = 3, currentLevel = 1, combo = 1, gameRunning = true, shakeTime = 0, laserTimer = 0, bombActive = false, prevPaddleX = canvas.width / 2 - 45;
+        const paddle = { w: 90, h: 12, x: canvas.width / 2 - 45, y: canvas.height - 30, color: '#0ff', dx: 0 };
         let balls = [], bricks = [], powerUps = [], particles = [], floatingTexts = [], lasers = [];
         let stars = Array.from({length: 40}, () => ({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: Math.random() * 2, speed: Math.random() * 0.5 + 0.1 }));
 
@@ -74,8 +74,10 @@
 
         function movePaddle(clientX) {
             const rect = canvas.getBoundingClientRect();
-            paddle.x = clientX - rect.left - paddle.w/2;
-            paddle.x = Math.max(0, Math.min(canvas.width - paddle.w, paddle.x));
+            let newX = clientX - rect.left - paddle.w/2;
+            newX = Math.max(0, Math.min(canvas.width - paddle.w, newX));
+            paddle.dx = newX - paddle.x;
+            paddle.x = newX;
         }
         canvas.addEventListener('mousemove', (e) => movePaddle(e.clientX));
         canvas.addEventListener('touchmove', (e) => { movePaddle(e.touches[0].clientX); e.preventDefault(); }, {passive: false});
@@ -94,7 +96,17 @@
                 else if (b.x - b.radius <= 0) { b.dx = Math.abs(b.dx); b.x = b.radius; startShake(2); }
                 if (b.y - b.radius <= 0) { b.dy = Math.abs(b.dy); b.y = b.radius; startShake(2); }
                 if (b.y + b.radius > paddle.y && b.y < paddle.y + paddle.h && b.x > paddle.x && b.x < paddle.x + paddle.w) {
-                    b.dy = -b.speed; b.dx = ((b.x - (paddle.x + paddle.w/2)) / (paddle.w/2)) * b.speed;
+                    let hitPos = (b.x - paddle.x) / paddle.w;
+                    let angleFactor = (hitPos - 0.5) * 2; // -1 to 1
+                    b.dx = angleFactor * b.speed * 1.2 + paddle.dx * 0.1; // spin
+                    b.dy = -Math.abs(b.dy);
+                    let len = Math.sqrt(b.dx*b.dx + b.dy*b.dy);
+                    if (len > 0) {
+                        b.dx /= len; b.dy /= len;
+                        let newSpeed = Math.max(3, Math.min(8, len));
+                        b.dx *= newSpeed; b.dy *= newSpeed;
+                        b.speed = newSpeed;
+                    }
                     combo = 1; comboEl.innerText = "x1";
                 }
 
