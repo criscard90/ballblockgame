@@ -51,7 +51,7 @@
         function createBall(x, y, isExtra = false) {
             const angle = isExtra ? (Math.random() * Math.PI) - Math.PI : -Math.PI/4;
             const speed = 4 + (currentLevel * 0.2);
-            return { radius: 7, x, y, dx: isExtra ? Math.cos(angle) * speed : speed, dy: isExtra ? Math.sin(angle) * speed : -speed, speed, color: '#fff', isFire: false, fireTimer: 0, trail: [] };
+            return { radius: 7, x, y, dx: isExtra ? Math.cos(angle) * speed : speed, dy: isExtra ? Math.sin(angle) * speed : -speed, speed, color: '#fff', isFire: false, fireTimer: 0, trail: [], spin: 0 };
         }
 
         function spawnText(x, y, txt, color) { floatingTexts.push({ x, y, txt, color, life: 1.0 }); }
@@ -98,7 +98,8 @@
                 if (b.y + b.radius > paddle.y && b.y < paddle.y + paddle.h && b.x > paddle.x && b.x < paddle.x + paddle.w) {
                     let hitPos = (b.x - paddle.x) / paddle.w;
                     let angleFactor = (hitPos - 0.5) * 2; // -1 to 1
-                    b.dx = angleFactor * b.speed * 1.2 + paddle.dx * 0.1; // spin
+                    b.dx = angleFactor * b.speed * 1.2 + paddle.dx * 0.3; // spin
+                    b.spin += paddle.dx * 0.5; // add spin
                     b.dy = -Math.abs(b.dy);
                     let len = Math.sqrt(b.dx*b.dx + b.dy*b.dy);
                     if (len > 0) {
@@ -147,6 +148,7 @@
                         }
                     }
                 });
+                b.spin *= 0.98; // decay spin
                 if (b.isFire) { b.fireTimer--; if(b.fireTimer <= 0) b.isFire = false; }
                 if (b.y > canvas.height) balls.splice(i, 1);
             }
